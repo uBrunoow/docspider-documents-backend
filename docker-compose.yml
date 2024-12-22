@@ -1,0 +1,112 @@
+services:
+  app:
+    build: ./
+    command: gunicorn backoffice.wsgi:application --bind 0.0.0.0:8000
+    restart: on-failure
+    expose:
+      - 8000
+    volumes:
+      - static_volume:/home/app/web/staticfiles
+      - ./docker-data/media_volume:/home/app/web/mediafiles
+    env_file:
+      - ./.env
+  #Nginx Proxy Manager
+  nginxmanager:
+    image: jc21/nginx-proxy-manager:latest
+    restart: on-failure
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./docker-data/nginxmanager/data:/data
+      - ./docker-data/nginxmanager/letsencrypt:/etc/letsencrypt
+
+  # PgAdmin
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: on-failure
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - 8081:80
+
+  # Grafana Loki
+  loki:
+    image: grafana/loki:2.9.2
+    restart: on-failure
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./docker-data/loki-data:/loki-data
+
+  # Grafana Promtail
+  promtail:
+    image: grafana/promtail:2.9.2
+    restart: on-failure
+    volumes:
+      - /var/log:/var/log
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail/config/promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+
+  # Grafana
+  grafana:
+    user: "root"
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+        - name: Loki
+          type: loki
+          access: proxy 
+          orgId: 1
+          url: http://loki:3100
+          basicAuth: false
+          isDefault: true
+          version: 1
+          editable: false
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          orgId: 1
+          url: http://prometheus:9090
+          basicAuth: false
+          isDefault: false
+          version: 1
+          editable: false
+        EOF
+        /run.sh
+    image: grafana/grafana:latest
+    restart: on-failure
+    volumes:
+      - ./docker-data/grafana_data:/var/lib/grafana
+    ports:
+      - "3060:3000"
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    restart: on-failure
+    user: "root"
+    ports:
+      - "9090:9090"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        /bin/prometheus --config.file=/etc/prometheus/prometheus/config/prometheus-prod.yml --web.enable-lifecycle
+    volumes:
+      - ./prometheus/config/prometheus-prod.yml:/etc/prometheus/prometheus/config/prometheus-prod.yml
+      - ./docker-data/prometheus_data:/prometheus
+      
+volumes:
+  static_volume:
