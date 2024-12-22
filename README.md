@@ -1,6 +1,6 @@
-# Django Aupi Boilerplate
+# Django Boilerplate
 
-Boilerplate para projetos Django da Aupi com Postgress + Django + Django Rest e Jazzmin
+Boilerplate para projetos Django com Postgress + Django + Django Rest e Jazzmin
 
 ## PREREQUISITES
 Ter docker e docker composer v2 e o virtualenv
